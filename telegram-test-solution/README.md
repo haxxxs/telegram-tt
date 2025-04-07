@@ -70,7 +70,6 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
     if (!isCounting || !messages || !currentUserId) return;
 
     const timer = setTimeout(() => {
-      // Подсчет собственных сообщений
       const count = Object.values(messages).filter(
         (message) => message.senderId === currentUserId
       ).length;
