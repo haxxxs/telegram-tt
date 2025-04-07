@@ -73,6 +73,7 @@ import ChatFolderModal from '../ChatFolderModal.async';
 import MuteChatModal from '../MuteChatModal.async';
 import ChatBadge from './ChatBadge';
 import ChatCallStatus from './ChatCallStatus';
+import MessageCounter from './MessageCounter';
 
 import './Chat.scss';
 
@@ -197,6 +198,8 @@ const Chat: FC<OwnProps & StateProps> = ({
 
   const getIsForumPanelClosed = useSelectorSignal(selectIsForumPanelClosed);
 
+  const isIntersecting = useIsIntersecting(ref, observeIntersection);
+
   const handleClick = useLastCallback(() => {
     const noForumTopicPanel = isMobile && isForumAsMessages;
 
@@ -283,15 +286,6 @@ const Chat: FC<OwnProps & StateProps> = ({
     isPreview,
     topics,
   });
-
-  const isIntersecting = useIsIntersecting(ref, chat ? observeIntersection : undefined);
-
-  // Load the forum topics to display unread count badge
-  useEffect(() => {
-    if (isIntersecting && isForum && isSynced && listedTopicIds === undefined) {
-      loadTopics({ chatId });
-    }
-  }, [chatId, listedTopicIds, isSynced, isForum, isIntersecting]);
 
   const isOnline = user && userStatus && isUserOnline(user, userStatus);
   const { hasShownClass: isAvatarOnlineShown } = useShowTransitionDeprecated(isOnline);
@@ -424,6 +418,7 @@ const Chat: FC<OwnProps & StateProps> = ({
           chatId={chatId}
         />
       )}
+      <MessageCounter chatId={chatId} isVisible={isIntersecting} />
     </ListItem>
   );
 };

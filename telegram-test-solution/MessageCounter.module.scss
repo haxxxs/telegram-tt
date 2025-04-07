@@ -1,0 +1,53 @@
+.messageCounter {
+  position: absolute;
+  bottom: 0.25rem;
+  right: 0.5rem;
+  background-color: var(--color-background);
+  border-radius: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: width 0.5s ease, opacity 0.3s ease;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  overflow: hidden;
+  max-width: 8rem;
+  opacity: 1;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+
+  &.isCounting {
+    width: 9rem;
+  }
+
+  &.isComplete {
+    width: 5rem;
+  }
+
+  &.hidden {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.counterText {
+  animation: none;
+}
+
+.isCounting .counterText {
+  animation: pulse 1s infinite;
+}

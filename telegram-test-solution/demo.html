@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Демонстрация компонента подсчета сообщений</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        background-color: #f5f5f5;
+        margin: 0;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+      }
+
+      h1 {
+        color: #3390ec;
+        text-align: center;
+      }
+
+      .description {
+        margin-bottom: 20px;
+        line-height: 1.5;
+      }
+
+      .demo-section {
+        margin-top: 30px;
+      }
+
+      .chat-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .chat-item {
+        display: flex;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #e6e6e6;
+        position: relative;
+        transition: background-color 0.2s;
+        cursor: pointer;
+      }
+
+      .chat-item:hover {
+        background-color: #f0f0f0;
+      }
+
+      .chat-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background-color: #3390ec;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+        margin-right: 15px;
+      }
+
+      .chat-info {
+        flex: 1;
+        position: relative;
+      }
+
+      .chat-name {
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .chat-message {
+        color: #707579;
+        font-size: 14px;
+      }
+
+      .message-counter {
+        position: absolute;
+        bottom: 0;
+        right: 10px;
+        background-color: white;
+        border-radius: 12px;
+        padding: 4px 10px;
+        font-size: 12px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        transition: width 0.5s ease, opacity 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1;
+        opacity: 0;
+        min-width: 30px;
+        min-height: 24px;
+        overflow: hidden;
+      }
+
+      .message-counter.counting {
+        width: 150px;
+        opacity: 1;
+      }
+
+      .message-counter.complete {
+        width: 80px;
+        opacity: 1;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.1);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .counter-text {
+        animation: none;
+      }
+
+      .message-counter.counting .counter-text {
+        animation: pulse 1s infinite;
+      }
+
+      .code-section {
+        margin-top: 30px;
+        background-color: #f6f8fa;
+        padding: 15px;
+        border-radius: 8px;
+        overflow-x: auto;
+      }
+
+      pre {
+        margin: 0;
+        font-family: "Courier New", Courier, monospace;
+        font-size: 14px;
+      }
+
+      .buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        justify-content: center;
+      }
+
+      button {
+        background-color: #3390ec;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        background-color: #2a7ed3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Подсчет сообщений в чатах Telegram</h1>
+
+      <div class="description">
+        <p>
+          Этот демонстрационный макет показывает функциональность, разработанную
+          для тестового задания на тему Telegram Web A.
+        </p>
+        <p>
+          Задание:
+          <strong
+            >Подсчет моих сообщений в чатах типа группа и личный чат.</strong
+          >
+          Подсчет запускается когда объект чата попадает в область видимости.
+          При начале подсчета выводим плашку с надписью "Подсчет сообщений". При
+          окончании - число сообщений.
+        </p>
+      </div>
+
+      <div class="demo-section">
+        <h2>Демонстрация</h2>
+        <p>
+          Нажмите на кнопку "Показать демо", чтобы увидеть, как работает
+          компонент:
+        </p>
+
+        <div class="buttons">
+          <button id="demo-button">Показать демо</button>
+          <button id="reset-button">Сбросить</button>
+        </div>
+
+        <div class="chat-list">
+          <div class="chat-item" data-messages="42">
+            <div class="chat-avatar">АК</div>
+            <div class="chat-info">
+              <div class="chat-name">Алексей Ковалев</div>
+              <div class="chat-message">Привет! Как дела с проектом?</div>
+              <div class="message-counter">
+                <span class="counter-text">Загрузка...</span>
+              </div>
+            </div>
+          </div>
+          <div class="chat-item" data-messages="18">
+            <div class="chat-avatar">МС</div>
+            <div class="chat-info">
+              <div class="chat-name">Мария Сидорова</div>
+              <div class="chat-message">Посмотри, что я нашла 🔍</div>
+              <div class="message-counter">
+                <span class="counter-text">Загрузка...</span>
+              </div>
+            </div>
+          </div>
+          <div class="chat-item" data-messages="67">
+            <div class="chat-avatar">ПР</div>
+            <div class="chat-info">
+              <div class="chat-name">Проектная группа</div>
+              <div class="chat-message">
+                Иван: Давайте обсудим задачи на этой неделе
+              </div>
+              <div class="message-counter">
+                <span class="counter-text">Загрузка...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="code-section">
+        <h2>Реализация компонента</h2>
+        <pre>
+import type { FC } from '../../../lib/teact/teact';
+import React, { useEffect, useState, memo } from '../../../lib/teact/teact';
+import { getActions, withGlobal } from '../../../global';
+
+import type { ApiChat, ApiMessage } from '../../../api/types';
+import { MAIN_THREAD_ID } from '../../../api/types';
+
+import { selectChatMessages } from '../../../global/selectors';
+import usePrevious from '../../../hooks/usePrevious';
+import buildClassName from '../../../util/buildClassName';
+import { isUserId, isChatGroup, isChatSuperGroup, isOwnMessage } from '../../../global/helpers';
+
+import styles from './MessageCounter.module.scss';
+
+const COUNTER_HIDE_DELAY = 3000;
+const COUNT_ANIMATION_DELAY = 800;
+
+const MessageCounter: FC&lt;OwnProps & StateProps> = ({
+  chatId,
+  chat,
+  isVisible,
+  messages,
+  currentUserId,
+}) => {
+  const [isCounting, setIsCounting] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [messageCount, setMessageCount] = useState(0);
+  const [isHidden, setIsHidden] = useState(true);
+  
+  useEffect(() => {
+    if (isVisible && !isComplete) {
+      setIsCounting(true);
+      setIsHidden(false);
+    }
+  }, [isVisible, isComplete]);
+
+  useEffect(() => {
+    if (!isCounting) return;
+    
+    const timer = setTimeout(() => {
+      const count = Object.values(messages).filter((message) => 
+        message.senderId === currentUserId
+      ).length;
+      
+      setMessageCount(count);
+      setIsCounting(false);
+      setIsComplete(true);
+    }, COUNT_ANIMATION_DELAY);
+    
+    return () => clearTimeout(timer);
+  }, [isCounting, messages, currentUserId]);
+
+  useEffect(() => {
+    if (isComplete) {
+      const timeout = setTimeout(() => {
+        setIsHidden(true);
+      }, COUNTER_HIDE_DELAY);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [isComplete]);
+
+  return (
+    &lt;div className={buildClassName(
+      styles.messageCounter,
+      isCounting && styles.isCounting,
+      isComplete && styles.isComplete,
+      isHidden && styles.hidden
+    )}>
+      &lt;span className={styles.counterText}>
+        {isCounting ? 'Подсчет сообщений' : `${messageCount} сообщ.`}
+      &lt;/span>
+    &lt;/div>
+  );
+};</pre
+        >
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const demoButton = document.getElementById("demo-button");
+        const resetButton = document.getElementById("reset-button");
+        const chatItems = document.querySelectorAll(".chat-item");
+
+        function resetDemo() {
+          chatItems.forEach((chat) => {
+            const counter = chat.querySelector(".message-counter");
+            counter.className = "message-counter";
+            const counterText = counter.querySelector(".counter-text");
+            counterText.textContent = "Загрузка...";
+          });
+        }
+
+        demoButton.addEventListener("click", function () {
+          resetDemo();
+
+          chatItems.forEach((chat, index) => {
+            const messageCount = chat.getAttribute("data-messages");
+            const counter = chat.querySelector(".message-counter");
+            const counterText = counter.querySelector(".counter-text");
+
+            setTimeout(() => {
+              counter.className = "message-counter counting";
+              counterText.textContent = "Подсчет сообщений";
+
+              setTimeout(() => {
+                counter.className = "message-counter complete";
+                counterText.textContent = `${messageCount} сообщ.`;
+
+                setTimeout(() => {
+                  counter.className = "message-counter";
+                }, 3000);
+              }, 2000);
+            }, index * 500);
+          });
+        });
+
+        resetButton.addEventListener("click", resetDemo);
+      });
+    </script>
+  </body>
+</html>
