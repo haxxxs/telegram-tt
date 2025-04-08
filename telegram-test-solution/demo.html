@@ -242,81 +242,118 @@
       <div class="code-section">
         <h2>Реализация компонента</h2>
         <pre>
-import type { FC } from '../../../lib/teact/teact';
-import React, { useEffect, useState, memo } from '../../../lib/teact/teact';
-import { getActions, withGlobal } from '../../../global';
-
-import type { ApiChat, ApiMessage } from '../../../api/types';
-import { MAIN_THREAD_ID } from '../../../api/types';
-
-import { selectChatMessages } from '../../../global/selectors';
-import usePrevious from '../../../hooks/usePrevious';
-import buildClassName from '../../../util/buildClassName';
-import { isUserId, isChatGroup, isChatSuperGroup, isOwnMessage } from '../../../global/helpers';
-
-import styles from './MessageCounter.module.scss';
-
-const COUNTER_HIDE_DELAY = 3000;
-const COUNT_ANIMATION_DELAY = 800;
-
-const MessageCounter: FC&lt;OwnProps & StateProps> = ({
-  chatId,
-  chat,
-  isVisible,
-  messages,
-  currentUserId,
-}) => {
-  const [isCounting, setIsCounting] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [messageCount, setMessageCount] = useState(0);
-  const [isHidden, setIsHidden] = useState(true);
-  
-  useEffect(() => {
-    if (isVisible && !isComplete) {
-      setIsCounting(true);
-      setIsHidden(false);
-    }
-  }, [isVisible, isComplete]);
-
-  useEffect(() => {
-    if (!isCounting) return;
-    
-    const timer = setTimeout(() => {
-      const count = Object.values(messages).filter((message) => 
-        message.senderId === currentUserId
-      ).length;
-      
-      setMessageCount(count);
-      setIsCounting(false);
-      setIsComplete(true);
-    }, COUNT_ANIMATION_DELAY);
-    
-    return () => clearTimeout(timer);
-  }, [isCounting, messages, currentUserId]);
-
-  useEffect(() => {
-    if (isComplete) {
-      const timeout = setTimeout(() => {
-        setIsHidden(true);
-      }, COUNTER_HIDE_DELAY);
-      
-      return () => clearTimeout(timeout);
-    }
-  }, [isComplete]);
-
-  return (
-    &lt;div className={buildClassName(
-      styles.messageCounter,
-      isCounting && styles.isCounting,
-      isComplete && styles.isComplete,
-      isHidden && styles.hidden
-    )}>
-      &lt;span className={styles.counterText}>
-        {isCounting ? 'Подсчет сообщений' : `${messageCount} сообщ.`}
-      &lt;/span>
-    &lt;/div>
-  );
-};</pre
+          import type { FC } from '../../../lib/teact/teact';
+          import React, { useEffect, useState, memo } from '../../../lib/teact/teact';
+          import { getActions, withGlobal } from '../../../global';
+          
+          import type { ApiChat, ApiMessage } from '../../../api/types';
+          import { MAIN_THREAD_ID } from '../../../api/types';
+          
+          import { selectChatMessages } from '../../../global/selectors';
+          import usePrevious from '../../../hooks/usePrevious';
+          import buildClassName from '../../../util/buildClassName';
+          import { isUserId, isChatGroup, isChatSuperGroup, isChatChannel } from '../../../global/helpers';
+          
+          import styles from './MessageCounter.module.scss';
+          
+          export type OwnProps = {
+            chatId: string;
+            isVisible: boolean;
+          };
+          
+          type StateProps = {
+            chat?: ApiChat;
+            messages?: Record<number, ApiMessage>;
+            currentUserId?: string;
+          };
+          
+          const COUNT_ANIMATION_DELAY = 800;
+          
+          const MessageCounter: FC<OwnProps & StateProps> = ({
+            chatId,
+            chat,
+            isVisible,
+            messages,
+            currentUserId,
+          }) => {
+            const { loadViewportMessages } = getActions();
+            const [isCounting, setIsCounting] = useState(false);
+            const [isComplete, setIsComplete] = useState(false);
+            const [messageCount, setMessageCount] = useState(0);
+            const [isHidden, setIsHidden] = useState(true);
+          
+            const wasVisible = usePrevious(isVisible);
+            const isPrevComplete = usePrevious(isComplete);
+          
+            const shouldProcessChat = chat && (
+              isUserId(chat.id) || isChatGroup(chat) || isChatSuperGroup(chat)
+            ) && !isChatChannel(chat);
+          
+            useEffect(() => {
+              if (isVisible && !wasVisible && shouldProcessChat && !isComplete) {
+                setIsCounting(true);
+                setIsHidden(false);
+              }
+            }, [isVisible, wasVisible, shouldProcessChat, isComplete]);
+          
+            useEffect(() => {
+              if (!isCounting || !chat || !currentUserId) return;
+          
+              let isMounted = true;
+          
+              const countUserMessages = () => {
+                if (!messages) return 0;
+          
+                if (chatId) {
+                  loadViewportMessages({
+                    chatId,
+                    threadId: MAIN_THREAD_ID,
+                  });
+                }
+          
+                return Object.values(messages).filter((message: ApiMessage) =>
+                  message.senderId === currentUserId
+                ).length;
+              };
+          
+              const timer = setTimeout(() => {
+                try {
+                  const count = countUserMessages();
+                  setMessageCount(count);
+                  setIsCounting(false);
+                  setIsComplete(true);
+                } catch (error) {
+                  console.error('Error counting messages:', error);
+                  setIsCounting(false);
+                  setIsComplete(true);
+                }
+              }, COUNT_ANIMATION_DELAY);
+          
+              return () => {
+                isMounted = false;
+                clearTimeout(timer);
+              };
+            }, [isCounting, chat, messages, currentUserId, chatId, loadViewportMessages]);
+          
+            if (!shouldProcessChat || (!isCounting && !isComplete) || (!isCounting && !messageCount)) {
+              return null;
+            }
+          
+            const className = buildClassName(
+              styles.messageCounter,
+              isCounting && styles.isCounting,
+              isComplete && styles.isComplete,
+              isHidden && styles.hidden
+            );
+          
+            return (
+              <div className={className}>
+                <span className={styles.counterText}>
+                  {isCounting ? 'Подсчет сообщений' : `${messageCount} сообщ.`}
+                </span>
+              </div>
+            );
+          };</pre
         >
       </div>
     </div>
@@ -351,10 +388,6 @@ const MessageCounter: FC&lt;OwnProps & StateProps> = ({
               setTimeout(() => {
                 counter.className = "message-counter complete";
                 counterText.textContent = `${messageCount} сообщ.`;
-
-                setTimeout(() => {
-                  counter.className = "message-counter";
-                }, 3000);
               }, 2000);
             }, index * 500);
           });

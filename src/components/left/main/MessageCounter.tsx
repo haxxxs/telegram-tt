@@ -8,7 +8,7 @@ import { MAIN_THREAD_ID } from '../../../api/types';
 import { selectChatMessages } from '../../../global/selectors';
 import usePrevious from '../../../hooks/usePrevious';
 import buildClassName from '../../../util/buildClassName';
-import { isUserId, isChatGroup, isChatSuperGroup, isOwnMessage, isChatChannel } from '../../../global/helpers';
+import { isUserId, isChatGroup, isChatSuperGroup, isChatChannel } from '../../../global/helpers';
 
 import styles from './MessageCounter.module.scss';
 
@@ -23,7 +23,6 @@ type StateProps = {
   currentUserId?: string;
 };
 
-const COUNTER_HIDE_DELAY = 3000;
 const COUNT_ANIMATION_DELAY = 800;
 
 const MessageCounter: FC<OwnProps & StateProps> = ({
@@ -33,13 +32,13 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
   messages,
   currentUserId,
 }) => {
+  const { loadViewportMessages } = getActions();
   const [isCounting, setIsCounting] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [isHidden, setIsHidden] = useState(true);
 
   const wasVisible = usePrevious(isVisible);
-  const isPrevComplete = usePrevious(isComplete);
 
   const shouldProcessChat = chat && (
     isUserId(chat.id) || isChatGroup(chat) || isChatSuperGroup(chat)
@@ -53,30 +52,43 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
   }, [isVisible, wasVisible, shouldProcessChat, isComplete]);
 
   useEffect(() => {
-    if (isComplete && !isPrevComplete) {
-      const timeout = setTimeout(() => {
-        setIsHidden(true);
-      }, COUNTER_HIDE_DELAY);
+    if (!isCounting || !chat || !currentUserId) return;
 
-      return () => clearTimeout(timeout);
-    }
-  }, [isComplete, isPrevComplete]);
+    let isMounted = true;
 
-  useEffect(() => {
-    if (!isCounting || !messages || !currentUserId) return;
+    const countUserMessages = () => {
+      if (!messages) return 0;
+
+      if (chatId) {
+        loadViewportMessages({
+          chatId,
+          threadId: MAIN_THREAD_ID,
+        });
+      }
+
+      return Object.values(messages).filter((message: ApiMessage) =>
+        message.senderId === currentUserId
+      ).length;
+    };
 
     const timer = setTimeout(() => {
-      const count = Object.values(messages).filter((message) => (
-        message.senderId === currentUserId
-      )).length;
-
-      setMessageCount(count);
-      setIsCounting(false);
-      setIsComplete(true);
+      try {
+        const count = countUserMessages();
+        setMessageCount(count);
+        setIsCounting(false);
+        setIsComplete(true);
+      } catch (error) {
+        console.error('Error counting messages:', error);
+        setIsCounting(false);
+        setIsComplete(true);
+      }
     }, COUNT_ANIMATION_DELAY);
 
-    return () => clearTimeout(timer);
-  }, [isCounting, messages, currentUserId]);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [isCounting, chat, messages, currentUserId, chatId, loadViewportMessages]);
 
   if (!shouldProcessChat || (!isCounting && !isComplete) || (!isCounting && !messageCount)) {
     return null;
