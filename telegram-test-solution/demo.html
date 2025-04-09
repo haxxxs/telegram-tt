@@ -243,7 +243,7 @@
         <h2>Реализация компонента</h2>
         <pre>
           import type { FC } from '../../../lib/teact/teact';
-import React, { useEffect, useState, memo } from '../../../lib/teact/teact';
+import React, { useEffect, useState, memo, useRef } from '../../../lib/teact/teact';
 import { getActions, withGlobal, getGlobal } from '../../../global';
 
 import type { ApiChat, ApiMessage } from '../../../api/types';
@@ -282,8 +282,8 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
   const [isComplete, setIsComplete] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [isHidden, setIsHidden] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
-  const [processedMessageIds, setProcessedMessageIds] = useState<Set<number>>(new Set());
+  const processedMessageIds = useRef<Set<number>>(new Set<number>());
+  const isReachedStart = useRef<boolean>(false);
 
   const wasVisible = usePrevious(isVisible);
 
@@ -296,8 +296,8 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
       setIsCounting(true);
       setIsHidden(false);
       setMessageCount(0);
-      setHasMore(true);
-      setProcessedMessageIds(new Set());
+      processedMessageIds.current.clear();
+      isReachedStart.current = false;
     }
   }, [isVisible, wasVisible, shouldProcessChat, isComplete]);
 
@@ -307,42 +307,60 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
     let isMounted = true;
 
     const loadMessages = async () => {
-      if (!chatId || !hasMore) return;
+      if (!chatId || isReachedStart.current) return;
 
       try {
-        await loadViewportMessages({
-          chatId,
-          threadId: MAIN_THREAD_ID,
-          direction: LoadMoreDirection.Backwards,
+        await new Promise<void>((resolve) => {
+          loadViewportMessages({
+            chatId,
+            threadId: MAIN_THREAD_ID,
+            direction: LoadMoreDirection.Backwards,
+            onLoaded: () => {
+              if (!isMounted) {
+                resolve();
+                return;
+              }
+
+              const global = getGlobal();
+              const newMessages = selectChatMessages(global, chatId);
+
+              if (!newMessages) {
+                resolve();
+                return;
+              }
+
+              let newCount = 0;
+              let hasNewMessages = false;
+
+              Object.values(newMessages).forEach((message) => {
+                if (
+                  !processedMessageIds.current.has(message.id) &&
+                  message.senderId === currentUserId
+                ) {
+                  processedMessageIds.current.add(message.id);
+                  newCount++;
+                  hasNewMessages = true;
+                }
+              });
+
+              if (hasNewMessages) {
+                setMessageCount((prev) => prev + newCount);
+              }
+
+              const messageIds = Object.keys(newMessages).map(Number);
+              if (messageIds.length === 0 || Math.min(...messageIds) === 1) {
+                isReachedStart.current = true;
+                setIsCounting(false);
+                setIsComplete(true);
+              }
+
+              resolve();
+            },
+          });
         });
 
-        if (isMounted) {
-          const global = getGlobal();
-          const newMessages = selectChatMessages(global, chatId);
-
-          const newMessageIds = Object.keys(newMessages || {})
-            .map(Number)
-            .filter(id => !processedMessageIds.has(id));
-
-          const newMessageCount = newMessageIds
-            .map(id => newMessages![id])
-            .filter((message: ApiMessage) => message.senderId === currentUserId)
-            .length;
-
-          setProcessedMessageIds(prev => {
-            const newSet = new Set(prev);
-            newMessageIds.forEach(id => newSet.add(id));
-            return newSet;
-          });
-
-          setMessageCount(prevCount => prevCount + newMessageCount);
-
-          const messageIds = Object.keys(newMessages || {}).map(Number);
-          if (messageIds.length === 0 || Math.min(...messageIds) === 1) {
-            setHasMore(false);
-            setIsCounting(false);
-            setIsComplete(true);
-          }
+        if (!isReachedStart.current) {
+          setTimeout(loadMessages, COUNT_ANIMATION_DELAY);
         }
       } catch (error) {
         console.error(error);
@@ -353,15 +371,12 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
       }
     };
 
-    const timer = setTimeout(() => {
-      loadMessages();
-    }, COUNT_ANIMATION_DELAY);
+    loadMessages();
 
     return () => {
       isMounted = false;
-      clearTimeout(timer);
     };
-  }, [isCounting, chat, messages, currentUserId, chatId, loadViewportMessages, hasMore, processedMessageIds]);
+  }, [isCounting, chat, currentUserId, chatId, loadViewportMessages]);
 
   if (!shouldProcessChat || (!isCounting && !isComplete) || (!isCounting && !messageCount)) {
     return null;
