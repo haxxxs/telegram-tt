@@ -257,6 +257,7 @@ import { isUserId, isChatGroup, isChatSuperGroup, isChatChannel } from '../../..
 
 import styles from './MessageCounter.module.scss';
 
+// TODO: Можно вынести в отдельный файл type.ts.
 export type OwnProps = {
   chatId: string;
   isVisible: boolean;
@@ -268,7 +269,12 @@ type StateProps = {
   currentUserId?: string;
 };
 
+// TODO: Константы можно вынести в constants.ts.
 const COUNT_ANIMATION_DELAY = 800;
+const MAX_REQUESTS_PER_BATCH = 5;
+const REQUEST_DELAY = 1000;
+
+// TODO: Стейты и функции подсчета можно вынести в отельные файлы/хуки.
 
 const MessageCounter: FC<OwnProps & StateProps> = ({
   chatId,
@@ -282,14 +288,55 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
   const [isComplete, setIsComplete] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [isHidden, setIsHidden] = useState(true);
+
   const processedMessageIds = useRef<Set<number>>(new Set<number>());
   const isReachedStart = useRef<boolean>(false);
+  const requestQueue = useRef<(() => Promise<void>)[]>([]);
+  const isProcessing = useRef<boolean>(false);
+  const requestCount = useRef<number>(0);
+  const lastRequestTime = useRef<number>(0);
 
   const wasVisible = usePrevious(isVisible);
 
   const shouldProcessChat = chat && (
     isUserId(chat.id) || isChatGroup(chat) || isChatSuperGroup(chat)
   ) && !isChatChannel(chat);
+
+  const processNextRequest = async () => {
+    if (isProcessing.current || requestQueue.current.length === 0) return;
+
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime.current;
+    const delay = Math.max(0, REQUEST_DELAY - timeSinceLastRequest);
+
+    if (delay > 0) {
+      setTimeout(processNextRequest, delay);
+      return;
+    }
+
+    isProcessing.current = true;
+    const request = requestQueue.current.shift()!;
+
+    try {
+      await request();
+      lastRequestTime.current = Date.now();
+      requestCount.current++;
+    } catch (error) {
+      console.error('Error processing request:', error);
+    } finally {
+      isProcessing.current = false;
+      if (requestQueue.current.length > 0) {
+        setTimeout(processNextRequest, REQUEST_DELAY);
+      }
+    }
+  };
+
+  const addToQueue = (request: () => Promise<void>) => {
+    requestQueue.current.push(request);
+    if (!isProcessing.current) {
+      processNextRequest();
+    }
+  };
 
   useEffect(() => {
     if (isVisible && !wasVisible && shouldProcessChat && !isComplete) {
@@ -298,6 +345,8 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
       setMessageCount(0);
       processedMessageIds.current.clear();
       isReachedStart.current = false;
+      requestCount.current = 0;
+      requestQueue.current = [];
     }
   }, [isVisible, wasVisible, shouldProcessChat, isComplete]);
 
@@ -307,67 +356,71 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
     let isMounted = true;
 
     const loadMessages = async () => {
-      if (!chatId || isReachedStart.current) return;
+      if (!chatId || isReachedStart.current || requestCount.current >= MAX_REQUESTS_PER_BATCH) return;
 
-      try {
-        await new Promise<void>((resolve) => {
-          loadViewportMessages({
-            chatId,
-            threadId: MAIN_THREAD_ID,
-            direction: LoadMoreDirection.Backwards,
-            onLoaded: () => {
-              if (!isMounted) {
-                resolve();
-                return;
-              }
-
-              const global = getGlobal();
-              const newMessages = selectChatMessages(global, chatId);
-
-              if (!newMessages) {
-                resolve();
-                return;
-              }
-
-              let newCount = 0;
-              let hasNewMessages = false;
-
-              Object.values(newMessages).forEach((message) => {
-                if (
-                  !processedMessageIds.current.has(message.id) &&
-                  message.senderId === currentUserId
-                ) {
-                  processedMessageIds.current.add(message.id);
-                  newCount++;
-                  hasNewMessages = true;
+      const request = async () => {
+        try {
+          await new Promise<void>((resolve) => {
+            loadViewportMessages({
+              chatId,
+              threadId: MAIN_THREAD_ID,
+              direction: LoadMoreDirection.Backwards,
+              onLoaded: () => {
+                if (!isMounted) {
+                  resolve();
+                  return;
                 }
-              });
 
-              if (hasNewMessages) {
-                setMessageCount((prev) => prev + newCount);
-              }
+                const global = getGlobal();
+                const newMessages = selectChatMessages(global, chatId);
 
-              const messageIds = Object.keys(newMessages).map(Number);
-              if (messageIds.length === 0 || Math.min(...messageIds) === 1) {
-                isReachedStart.current = true;
-                setIsCounting(false);
-                setIsComplete(true);
-              }
+                if (!newMessages) {
+                  resolve();
+                  return;
+                }
 
-              resolve();
-            },
+                let newCount = 0;
+                let hasNewMessages = false;
+
+                Object.values(newMessages).forEach((message) => {
+                  if (
+                    !processedMessageIds.current.has(message.id) &&
+                    message.senderId === currentUserId
+                  ) {
+                    processedMessageIds.current.add(message.id);
+                    newCount++;
+                    hasNewMessages = true;
+                  }
+                });
+
+                if (hasNewMessages) {
+                  setMessageCount((prev) => prev + newCount);
+                }
+
+                const messageIds = Object.keys(newMessages).map(Number);
+                if (messageIds.length === 0 || Math.min(...messageIds) === 1) {
+                  isReachedStart.current = true;
+                  setIsCounting(false);
+                  setIsComplete(true);
+                }
+
+                resolve();
+              },
+            });
           });
-        });
+        } catch (error) {
+          console.error(error);
+          if (isMounted) {
+            setIsCounting(false);
+            setIsComplete(true);
+          }
+        }
+      };
 
-        if (!isReachedStart.current) {
-          setTimeout(loadMessages, COUNT_ANIMATION_DELAY);
-        }
-      } catch (error) {
-        console.error(error);
-        if (isMounted) {
-          setIsCounting(false);
-          setIsComplete(true);
-        }
+      addToQueue(request);
+
+      if (!isReachedStart.current && requestCount.current < MAX_REQUESTS_PER_BATCH) {
+        setTimeout(loadMessages, COUNT_ANIMATION_DELAY);
       }
     };
 
