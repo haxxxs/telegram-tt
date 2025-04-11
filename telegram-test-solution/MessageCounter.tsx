@@ -73,12 +73,14 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
     isProcessingGlobalQueue = true;
     setIsCounting(true);
     setIsHidden(false);
+    setIsComplete(false);
 
     const loadMessages = async () => {
       if (!isMounted || isReachedStart.current || requestCount.current >= MAX_REQUESTS_PER_CHAT) {
         if (globalChatQueue[0] === chatId) {
           globalChatQueue.shift();
           isProcessingGlobalQueue = false;
+          setIsCounting(false);
           setIsComplete(true);
         }
         return;
@@ -137,6 +139,12 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
               const messageIds = Object.keys(newMessages).map(Number);
               if (messageIds.length === 0 || Math.min(...messageIds) === 1) {
                 isReachedStart.current = true;
+                setIsCounting(false);
+                setIsComplete(true);
+                if (globalChatQueue[0] === chatId) {
+                  globalChatQueue.shift();
+                  isProcessingGlobalQueue = false;
+                }
               }
 
               requestCount.current++;
@@ -145,11 +153,19 @@ const MessageCounter: FC<OwnProps & StateProps> = ({
           });
         });
       } catch (error) {
-        console.error('Error loading messages:', error);
+        console.error(error);
         isReachedStart.current = true;
+        setIsCounting(false);
+        setIsComplete(true);
+        if (globalChatQueue[0] === chatId) {
+          globalChatQueue.shift();
+          isProcessingGlobalQueue = false;
+        }
       } finally {
         isProcessing.current = false;
-        setTimeout(loadMessages, REQUEST_DELAY);
+        if (!isReachedStart.current && requestCount.current < MAX_REQUESTS_PER_CHAT) {
+          setTimeout(loadMessages, REQUEST_DELAY);
+        }
       }
     };
 
